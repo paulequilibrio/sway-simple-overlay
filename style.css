@@ -1,0 +1,10 @@
+#clock-label {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 24px;
+    /* base size */
+    color: #FFff00;
+
+    background-color: rgba(0, 0, 0, 0);
+    padding: 8px 14px;
+    border-radius: 12px;
+}

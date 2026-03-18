@@ -1,0 +1,19 @@
+monitors:
+  - name: "eDP-1"
+    anchor: ["bottom", "right"]
+    margin: [30, 30]
+    format: "%H:%M\n%A, %B %d, %Y"
+    scale: 1.5
+
+  - name: "HDMI-A-1"
+    anchor: ["top", "right"]
+    margin: [20, 20]
+    format: "%Y-%m-%d %H:%M:%S"
+    scale: 1.0
+
+  - name: "default"
+    anchor: ["bottom", "right"]
+    margin: [10, 10]
+
+css_path: "style.css"
+click_through: true
