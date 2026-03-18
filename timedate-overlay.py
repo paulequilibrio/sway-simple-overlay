@@ -102,7 +102,7 @@ class ClockWindow(Gtk.Window):
             lbl.get_style_context().add_class(part.get("name", "part"))
 
             self.box.pack_start(lbl, False, False, 0)
-            self.labels.append((lbl, part.get("format", "%H:%M:%S")))
+            self.labels.append((lbl, part))  # store full part dict
 
         # CSS
         Gtk.StyleContext.add_provider_for_screen(
@@ -172,8 +172,18 @@ class ClockWindow(Gtk.Window):
     def update_time(self):
         now = datetime.now()
 
-        for lbl, fmt in self.labels:
-            lbl.set_text(now.strftime(fmt))
+        for lbl, part in self.labels:
+            fmt = part.get("format")
+            cmd = part.get("command")
+
+            if fmt:
+                lbl.set_text(now.strftime(fmt))
+            elif cmd:
+                try:
+                    output = subprocess.check_output(cmd, shell=True, text=True).strip()
+                    lbl.set_text(output)
+                except Exception:
+                    lbl.set_text("[error]")
 
         return True
 
