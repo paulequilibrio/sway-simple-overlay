@@ -12,7 +12,6 @@ gi.require_version("GtkLayerShell", "0.1")
 
 from gi.repository import Gtk, Gdk, GLib, GtkLayerShell
 
-
 CONFIG_PATH = "config.yaml"
 
 
@@ -36,33 +35,26 @@ def get_sway_outputs():
             check=True
         )
         return json.loads(result.stdout)
-    except Exception as e:
-        print("Failed to query sway outputs:", e)
+    except Exception:
         return []
 
 
 def match_output_to_monitor(monitor, sway_outputs):
     geo = monitor.get_geometry()
-    mx, my = geo.x, geo.y
 
     for output in sway_outputs:
         rect = output.get("rect", {})
-        if rect.get("x") == mx and rect.get("y") == my:
+        if rect.get("x") == geo.x and rect.get("y") == geo.y:
             return output.get("name")
 
     return None
 
 
 def match_monitor_config(output_name, configs):
-    if not output_name:
-        output_name = ""
-
-    # Exact match
     for conf in configs:
         if conf.get("name") == output_name:
             return conf
 
-    # Default fallback
     for conf in configs:
         if conf.get("name") == "default":
             return conf
@@ -78,44 +70,63 @@ class ClockWindow(Gtk.Window):
         super().__init__()
 
         self.config = config
+        self.labels = []
+        self.timer_id = None
 
         self.set_decorated(False)
         self.set_app_paintable(True)
 
-        # Transparency
         visual = self.get_screen().get_rgba_visual()
         if visual:
             self.set_visual(visual)
 
-        # Layer shell
         GtkLayerShell.init_for_window(self)
         GtkLayerShell.set_layer(self, GtkLayerShell.Layer.TOP)
         GtkLayerShell.set_monitor(self, monitor)
 
         self.apply_position()
 
-        if config.get("click_through", False):
-            self.set_pass_through()
+        # Root container
+        self.box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self.box.set_name("clock-box")
+        self.add(self.box)
 
-        # Label
-        self.label = Gtk.Label()
-        self.label.set_name("clock-label")
-        self.add(self.label)
+        # Parts system
+        parts = self.config.get("parts", [])
+        if not parts:
+            parts = [{"name": "time", "format": self.config.get("format", "%H:%M:%S")}]
 
-        # Apply CSS
+        for part in parts:
+            lbl = Gtk.Label()
+            lbl.set_xalign(0.5)
+            lbl.get_style_context().add_class(part.get("name", "part"))
+
+            self.box.pack_start(lbl, False, False, 0)
+            self.labels.append((lbl, part.get("format", "%H:%M:%S")))
+
+        # CSS
         Gtk.StyleContext.add_provider_for_screen(
             self.get_screen(),
             css_provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
         )
 
-        # Apply scaling
         self.apply_scale()
 
-        GLib.timeout_add_seconds(1, self.update_time)
-        self.update_time()
+        # Start timer
+        self.start_timer()
 
         self.show_all()
+
+    def start_timer(self):
+        interval = float(self.config.get("refresh_interval", 1.0))
+        interval_ms = int(interval * 1000)
+
+        if self.timer_id:
+            GLib.source_remove(self.timer_id)
+
+        self.timer_id = GLib.timeout_add(interval_ms, self.update_time)
+        self.update_time()
 
     def apply_position(self):
         anchors = self.config.get("anchor", ["top", "right"])
@@ -143,9 +154,8 @@ class ClockWindow(Gtk.Window):
     def apply_scale(self):
         scale = self.config.get("scale", 1.0)
 
-        # Apply scaling via CSS override
         css = f"""
-        #clock-label {{
+        #clock-box {{
             font-size: {int(24 * scale)}px;
         }}
         """
@@ -159,18 +169,66 @@ class ClockWindow(Gtk.Window):
             Gtk.STYLE_PROVIDER_PRIORITY_USER
         )
 
-    def set_pass_through(self):
-        self.set_accept_focus(False)
-        self.set_sensitive(False)
-
-        surface = self.get_window()
-        if surface:
-            region = Gdk.Region()
-            surface.input_shape_combine_region(region, 0, 0)
-
     def update_time(self):
-        fmt = self.config.get("format", "%H:%M:%S")
-        self.label.set_text(datetime.now().strftime(fmt))
+        now = datetime.now()
+
+        for lbl, fmt in self.labels:
+            lbl.set_text(now.strftime(fmt))
+
+        return True
+
+
+# ---------------------------
+# APP (LIVE RELOAD)
+# ---------------------------
+class ClockApp:
+    def __init__(self):
+        self.windows = []
+        self.last_mtime = 0
+
+        GLib.timeout_add(1000, self.check_reload)
+        self.reload()
+
+    def clear_windows(self):
+        for w in self.windows:
+            w.destroy()
+        self.windows.clear()
+
+    def reload(self):
+        config = load_config()
+        css_provider = load_css(config.get("css_path", "style.css"))
+        sway_outputs = get_sway_outputs()
+
+        display = Gdk.Display.get_default()
+
+        self.clear_windows()
+
+        for i in range(display.get_n_monitors()):
+            monitor = display.get_monitor(i)
+
+            output_name = match_output_to_monitor(monitor, sway_outputs)
+
+            monitor_conf = match_monitor_config(
+                output_name,
+                config.get("monitors", [])
+            )
+
+            win = ClockWindow(monitor, monitor_conf, css_provider)
+            self.windows.append(win)
+
+    def check_reload(self):
+        try:
+            mtime = max(
+                os.path.getmtime(CONFIG_PATH),
+                os.path.getmtime("style.css")
+            )
+        except Exception:
+            return True
+
+        if mtime != self.last_mtime:
+            self.last_mtime = mtime
+            self.reload()
+
         return True
 
 
@@ -183,8 +241,6 @@ def load_css(path):
     if os.path.exists(path):
         with open(path, "rb") as f:
             provider.load_from_data(f.read())
-    else:
-        provider.load_from_data(b"")
 
     return provider
 
@@ -193,31 +249,7 @@ def load_css(path):
 # MAIN
 # ---------------------------
 def main():
-    config = load_config()
-    css_provider = load_css(config.get("css_path", "style.css"))
-
-    sway_outputs = get_sway_outputs()
-
-    display = Gdk.Display.get_default()
-    n_monitors = display.get_n_monitors()
-
-    windows = []
-
-    for i in range(n_monitors):
-        monitor = display.get_monitor(i)
-
-        output_name = match_output_to_monitor(monitor, sway_outputs)
-
-        monitor_conf = match_monitor_config(
-            output_name,
-            config.get("monitors", [])
-        )
-
-        print(f"Monitor {i} → {output_name}")
-
-        win = ClockWindow(monitor, monitor_conf, css_provider)
-        windows.append(win)
-
+    ClockApp()
     Gtk.main()
 
 

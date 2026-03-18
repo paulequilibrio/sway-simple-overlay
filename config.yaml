@@ -1,19 +1,24 @@
 monitors:
-  - name: "eDP-1"
-    anchor: ["bottom", "right"]
-    margin: [30, 30]
-    format: "%H:%M\n%A, %B %d, %Y"
-    scale: 1.5
+  - name: "eDP-1"               # Exact Sway output name
+    anchor: ["bottom", "right"] # Position on screen
+    margin: [30, 30]            # [vertical, horizontal] margins in px
+    scale: 1.2                  # Per-monitor scaling of font
+    refresh_interval: 60        # Update interval in seconds
 
-  - name: "HDMI-A-1"
-    anchor: ["top", "right"]
-    margin: [20, 20]
-    format: "%Y-%m-%d %H:%M:%S"
-    scale: 1.0
+    parts:
+      - name: "time"
+        format: "%H:%M"
+      - name: "date"
+        format: "%Y-%m-%d"
 
-  - name: "default"
-    anchor: ["bottom", "right"]
+  - name: "default"             # Fallback for other monitors
+    anchor: ["top", "left"]
     margin: [10, 10]
+    scale: 1.0
+    refresh_interval: 5.0
 
-css_path: "style.css"
-click_through: true
+    parts:
+      - name: "time"
+        format: "%H:%M"
+
+css_path: "style.css"           # Path to the CSS file

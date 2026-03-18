@@ -1,10 +1,20 @@
-#clock-label {
-    font-family: "JetBrains Mono", monospace;
-    font-size: 24px;
-    /* base size */
-    color: #FFff00;
+/* Root container */
+#clock-box {
+  font-family: "Liberation Mono", monospace;
+  background-color: rgba(0, 0, 0, 0.25);
+  padding: 10px;
+  border-radius: 10px;
+}
 
-    background-color: rgba(0, 0, 0, 0);
-    padding: 8px 14px;
-    border-radius: 12px;
+/* Time label styling */
+.time {
+  color: #ffff00;
+  font-size: 32px;
+  font-weight: bold;
+}
+
+/* Date label styling */
+.date {
+  color: #ffff99;
+  font-size: 16px;
 }
