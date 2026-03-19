@@ -24,3 +24,4 @@ monitors:
         format: "%H:%M"
 
 css_path: "style.css"           # Path to the CSS file
+live_reload: true               # Automatically reload config and CSS on changes
