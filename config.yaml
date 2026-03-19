@@ -17,11 +17,11 @@ monitors:
     anchor: ["top", "left"]
     margin: [10, 10]
     scale: 1.0
-    refresh_interval: 5.0
+    refresh_interval: 1.0
 
     parts:
       - name: "time"
-        format: "%H:%M"
+        format: "%H:%M:%S"
 
 css_path: "style.css"           # Path to the CSS file
 live_reload: true               # Automatically reload config and CSS on changes

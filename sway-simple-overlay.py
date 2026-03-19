@@ -6,6 +6,8 @@ import os
 import json
 import subprocess
 import signal
+import argparse
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -21,13 +23,39 @@ APP_NAME = "sway-simple-overlay"
 CONFIG_FILENAME = "config.yaml"
 CSS_FILENAME = "style.css"
 
-HOME = Path.home()
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_BASE = os.getenv("XDG_CONFIG_HOME", os.path.join(HOME, ".config"))
-CONFIG_DIR = os.path.join(CONFIG_BASE, APP_NAME)
 
 # ---------------------------
-# GENERIC FILE LOOKUP
+# CLI
+# ---------------------------
+parser = argparse.ArgumentParser(description="Simple Sway Overlay")
+parser.add_argument("--config", help="Path to config.yaml")
+parser.add_argument("--css", help="Path to style.css")
+parser.add_argument("--no-reload", action="store_true", help="Disable live reload")
+parser.add_argument("--debug", action="store_true", help="Enable debug logs")
+args = parser.parse_args()
+
+
+# ---------------------------
+# LOGGING
+# ---------------------------
+logging.basicConfig(
+    level=logging.DEBUG if args.debug else logging.INFO,
+    format="[%(levelname)s] %(message)s"
+)
+
+log = logging.getLogger("overlay")
+
+
+# ---------------------------
+# PATHS (XDG)
+# ---------------------------
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+XDG_CONFIG_HOME = os.getenv("XDG_CONFIG_HOME") or os.path.join(Path.home(), ".config")
+APP_DIR = os.path.join(XDG_CONFIG_HOME, APP_NAME)
+
+
+# ---------------------------
+# FILE LOOKUP
 # ---------------------------
 def find_first_file(filename, paths):
     for path in paths:
@@ -35,7 +63,9 @@ def find_first_file(filename, paths):
             continue
         candidate = os.path.join(path, filename)
         if os.path.exists(candidate):
+            log.debug(f"Found {filename} at {candidate}")
             return candidate
+    log.debug(f"{filename} not found in paths: {paths}")
     return None
 
 
@@ -43,14 +73,19 @@ def find_first_file(filename, paths):
 # CONFIG
 # ---------------------------
 def resolve_config_path():
+    if args.config:
+        log.debug(f"Using config from CLI: {args.config}")
+        return args.config
+
     return find_first_file(CONFIG_FILENAME, [
         SCRIPT_DIR,
-        CONFIG_DIR,
+        APP_DIR,
     ])
 
 
 def load_config(config_path):
     if not config_path or not os.path.exists(config_path):
+        log.warning("Config not found, using defaults")
         return {}
     with open(config_path, "r") as f:
         return yaml.safe_load(f) or {}
@@ -60,18 +95,18 @@ def load_config(config_path):
 # CSS
 # ---------------------------
 def resolve_css_path(config):
-    # Priority:
-    # 0. css_path in config (full path)
-    # 1. script dir
-    # 2. XDG config dir
+    if args.css:
+        log.debug(f"Using CSS from CLI: {args.css}")
+        return args.css
 
     custom_path = config.get("css_path")
     if custom_path and os.path.exists(custom_path):
+        log.debug(f"Using CSS from config: {custom_path}")
         return custom_path
 
     return find_first_file(CSS_FILENAME, [
         SCRIPT_DIR,
-        CONFIG_DIR,
+        APP_DIR,
     ])
 
 
@@ -80,6 +115,9 @@ def load_css(path):
     if path and os.path.exists(path):
         with open(path, "rb") as f:
             provider.load_from_data(f.read())
+        log.debug(f"Loaded CSS from {path}")
+    else:
+        log.debug("No CSS file found, using empty style")
     return provider
 
 
@@ -95,7 +133,8 @@ def get_sway_outputs():
             check=True
         )
         return json.loads(result.stdout)
-    except Exception:
+    except Exception as e:
+        log.warning(f"Failed to get sway outputs: {e}")
         return []
 
 
@@ -146,9 +185,7 @@ class ClockWindow(Gtk.Window):
         self.box.set_name("clock-box")
         self.add(self.box)
 
-        parts = self.config.get("parts", [])
-        if not parts:
-            parts = [{"name": "time", "format": "%H:%M:%S"}]
+        parts = self.config.get("parts", []) or [{"name": "time", "format": "%H:%M:%S"}]
 
         for part in parts:
             lbl = Gtk.Label()
@@ -246,9 +283,14 @@ class ClockApp:
         self.last_mtime = 0
         self.config_path = resolve_config_path()
         self.css_path = None
-        self.live_reload_enabled = True
 
-        GLib.timeout_add(1000, self.check_reload)
+        config = load_config(self.config_path)
+        live_reload = config.get("live_reload", True) and not args.no_reload
+        log.debug(f"Live reload is {'enabled' if live_reload else 'disabled'}")
+        
+        if live_reload:
+            GLib.timeout_add(1000, self.check_reload)
+        
         self.reload()
 
     def clear_windows(self):
@@ -260,8 +302,8 @@ class ClockApp:
         self.config_path = resolve_config_path()
         config = load_config(self.config_path)
 
-        self.live_reload_enabled = config.get("live_reload", True)
         self.css_path = resolve_css_path(config)
+        self.live_reload = config.get("live_reload", True) and not args.no_reload
 
         css_provider = load_css(self.css_path)
         sway_outputs = get_sway_outputs()
@@ -273,11 +315,12 @@ class ClockApp:
             monitor = display.get_monitor(i)
             output_name = match_output_to_monitor(monitor, sway_outputs)
             monitor_conf = match_monitor_config(output_name, config.get("monitors", []))
-            win = ClockWindow(monitor, monitor_conf, css_provider)
-            self.windows.append(win)
+            self.windows.append(ClockWindow(monitor, monitor_conf, css_provider))
+
+        log.info("Overlay reloaded")
 
     def check_reload(self):
-        if not self.live_reload_enabled:
+        if not self.live_reload:
             return True
 
         try:
@@ -299,6 +342,7 @@ class ClockApp:
 # ---------------------------
 def main():
     def handle_sigint(signum, frame):
+        log.info("Exiting...")
         Gtk.main_quit()
 
     signal.signal(signal.SIGINT, handle_sigint)
