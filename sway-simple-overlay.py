@@ -14,7 +14,7 @@ from pathlib import Path
 gi.require_version("Gtk", "3.0")
 gi.require_version("GtkLayerShell", "0.1")
 
-from gi.repository import Gtk, Gdk, GLib, GtkLayerShell
+from gi.repository import Gtk, Gdk, GLib, GtkLayerShell, Gio
 
 # ---------------------------
 # CONSTANTS
@@ -158,6 +158,43 @@ def match_monitor_config(output_name, configs):
 
 
 # ---------------------------
+# ASYNC COMMAND
+# ---------------------------
+class AsyncCommand:
+    def __init__(self, command, callback):
+        self.command = command
+        self.callback = callback
+
+    def run(self):
+        try:
+            self.proc = Gio.Subprocess.new(
+                ["/bin/sh", "-c", self.command],
+                Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+            )
+
+            self.proc.communicate_utf8_async(
+                None,
+                None,
+                self._on_done
+            )
+
+        except Exception:
+            self.callback("[error]")
+
+    def _on_done(self, proc, result):
+        try:
+            success, stdout, stderr = proc.communicate_utf8_finish(result)
+
+            if success and stdout:
+                self.callback(stdout.strip())
+            else:
+                self.callback("[error]")
+
+        except Exception:
+            self.callback("[error]")
+
+
+# ---------------------------
 # WINDOW
 # ---------------------------
 class ClockWindow(Gtk.Window):
@@ -167,6 +204,7 @@ class ClockWindow(Gtk.Window):
         self.config = config
         self.labels = []
         self.timer_id = None
+        self.running_commands = {}
 
         self.set_decorated(False)
         self.set_app_paintable(True)
@@ -258,18 +296,26 @@ class ClockWindow(Gtk.Window):
     def update_time(self):
         now = datetime.now()
 
-        for lbl, part in self.labels:
-            fmt = part.get("format")
-            cmd = part.get("command")
+        for i, (lbl, part) in enumerate(self.labels):
+            if "format" in part:
+                lbl.set_text(now.strftime(part["format"]))
 
-            if fmt:
-                lbl.set_text(now.strftime(fmt))
-            elif cmd:
-                try:
-                    output = subprocess.check_output(cmd, shell=True, text=True).strip()
-                    lbl.set_text(output)
-                except Exception:
-                    lbl.set_text("[error]")
+            elif "command" in part:
+                cmd = part["command"]
+
+                # prevent overlap
+                if i in self.running_commands:
+                    continue
+
+                def make_callback(label, idx):
+                    def callback(output):
+                        label.set_text(output)
+                        self.running_commands.pop(idx, None)
+                    return callback
+
+                async_cmd = AsyncCommand(cmd, make_callback(lbl, i))
+                self.running_commands[i] = async_cmd
+                async_cmd.run()
 
         return True
 
