@@ -5,6 +5,7 @@ import yaml
 import os
 import json
 import subprocess
+import signal
 from datetime import datetime
 
 gi.require_version("Gtk", "3.0")
@@ -241,6 +242,12 @@ class ClockApp:
 # MAIN
 # ---------------------------
 def main():
+    # Setup signal handler for graceful exit
+    def handle_sigint(signum, frame):
+        Gtk.main_quit()
+
+    signal.signal(signal.SIGINT, handle_sigint)
+
     ClockApp()
     Gtk.main()
 
