@@ -32,6 +32,7 @@ parser.add_argument("--config", help="Path to config.yaml")
 parser.add_argument("--css", help="Path to style.css")
 parser.add_argument("--no-reload", action="store_true", help="Disable live reload")
 parser.add_argument("--debug", action="store_true", help="Enable debug logs")
+parser.add_argument("--quiet", action="store_true", help="Disable logging output")
 args = parser.parse_args()
 
 
@@ -45,6 +46,8 @@ logging.basicConfig(
 
 log = logging.getLogger("overlay")
 
+if args.quiet:
+    log.setLevel(logging.ERROR)
 
 # ---------------------------
 # PATHS (XDG)
