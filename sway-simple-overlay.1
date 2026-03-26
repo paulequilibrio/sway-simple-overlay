@@ -1,0 +1,268 @@
+.TH SWAY-SIMPLE-OVERLAY 1 "2026-03-26" "sway-simple-overlay" "User Commands"
+.SH NAME
+sway-simple-overlay \- lightweight on-screen overlay for Sway and wlroots Wayland compositors
+.SH SYNOPSIS
+.B sway-simple-overlay
+[\fB\-\-config\fR \fIPATH\fR]
+[\fB\-\-css\fR \fIPATH\fR]
+[\fB\-\-no\-reload\fR]
+[\fB\-\-debug\fR]
+[\fB\-\-quiet\fR]
+.SH DESCRIPTION
+.B sway-simple-overlay
+is a multi-monitor, live-updating overlay for Sway and wlroots-based Wayland
+compositors, built with Python and GTK3.
+It renders an always-on-top overlay panel on one or more monitors displaying
+the current time, date, or the standard output of arbitrary shell commands.
+The overlay is fully configurable via a YAML file and styleable via GTK CSS,
+and supports live reloading of both files without restarting.
+.PP
+The overlay is implemented using the
+.B gtk-layer-shell
+protocol and requires no XWayland.
+.SH OPTIONS
+.TP
+.BR \-\-config " " \fIPATH\fR
+Path to the configuration file (YAML).
+Overrides the default search order.
+.TP
+.BR \-\-css " " \fIPATH\fR
+Path to the stylesheet (CSS).
+Overrides the default search order and the \fIcss_path\fR value in the
+configuration file.
+.TP
+.B \-\-no\-reload
+Disable live reload.
+By default, changes to
+.I config.yaml
+or
+.I style.css
+are applied automatically.
+This flag disables that behaviour regardless of the \fIlive_reload\fR setting
+in the configuration file.
+.TP
+.B \-\-debug
+Enable verbose debug logging to standard error.
+.TP
+.B \-\-quiet
+Suppress all log output except errors.
+.SH CONFIGURATION
+.SS File lookup order
+The configuration file
+.RI ( config.yaml )
+is searched in the following locations, in order:
+.IP 1. 4
+The directory containing the
+.B sway-simple-overlay
+script/executable.
+.IP 2. 4
+.IR $XDG_CONFIG_HOME /sway-simple-overlay/config.yaml
+(defaults to
+.IR ~/.config/sway-simple-overlay/config.yaml ).
+.PP
+The stylesheet
+.RI ( style.css )
+is searched in the same locations unless overridden by \fIcss_path\fR in the
+configuration file or by the \fB\-\-css\fR command-line option.
+.SS Top-level keys
+.TP
+.B monitors
+List of per-monitor configuration objects.
+See the
+.B MONITOR CONFIGURATION
+section below.
+.TP
+.B css_path
+Optional path to the CSS stylesheet.
+If unset, the default search order described above is used.
+.TP
+.B live_reload
+Boolean (\fItrue\fR / \fIfalse\fR).
+When \fItrue\fR (the default), the overlay watches
+.I config.yaml
+and the CSS file for changes and reloads them automatically.
+.SS Monitor configuration
+Each entry in the \fImonitors\fR list accepts the following keys:
+.TP
+.B name
+Sway output name (e.g.\ \fIDP\-1\fR, \fIeDP\-1\fR) or the special value
+\fIdefault\fR, which acts as a fallback for any monitor that does not match a
+named entry.
+.TP
+.B anchor
+List of screen edges to anchor the overlay to.
+Accepted values: \fItop\fR, \fIbottom\fR, \fIleft\fR, \fIright\fR.
+.TP
+.B margin
+Two-element list \fI[vertical, horizontal]\fR specifying the margin from the
+anchored edges in pixels.
+.TP
+.B scale
+Floating-point font scaling factor applied to this monitor.
+.TP
+.B refresh_interval
+Seconds between content updates.
+Fractional values (e.g.\ \fI0.5\fR) are accepted.
+.TP
+.B parts
+List of content items to display.
+See the
+.B PARTS
+section below.
+.SS Parts
+Each item in the \fIparts\fR list creates one label in the overlay.
+.TP
+.B name
+Identifier for the part; also used as the CSS class applied to the label
+widget (e.g.\ \fItime\fR, \fIdate\fR, \fIcpu\fR).
+.TP
+.B format
+.BR strftime (3)
+format string.
+Used when the part represents a time or date value.
+.TP
+.B command
+Shell command whose standard output becomes the label text.
+The command is executed via \fI/bin/sh \-c\fR.
+Avoid slow commands as they block the overlay UI refresh.
+.SH STYLING
+The overlay uses standard GTK3 CSS.
+Each part corresponds to a CSS class with the same name as the part.
+The wrapping box widget has the CSS id \fB#clock\-box\fR.
+.PP
+Example:
+.PP
+.RS 4
+.nf
+#clock-box {
+    background-color: rgba(0, 0, 0, 0.35);
+    padding: 10px;
+    border-radius: 10px;
+}
+
+\&.time {
+    color: #00ffcc;
+    font-size: 28px;
+    font-weight: bold;
+}
+
+\&.date {
+    color: #888888;
+    font-size: 16px;
+}
+
+\&.cpu {
+    color: #ffcc00;
+    font-size: 18px;
+}
+.fi
+.RE
+.SH FILES
+.TP
+.I ~/.config/sway-simple-overlay/config.yaml
+Default user configuration file.
+.TP
+.I ~/.config/sway-simple-overlay/style.css
+Default user stylesheet.
+.SH ENVIRONMENT
+.TP
+.B XDG_CONFIG_HOME
+Base directory for user configuration files.
+Defaults to
+.I ~/.config
+when unset.
+.SH EXAMPLES
+Start the overlay with default configuration:
+.PP
+.RS 4
+.B sway-simple-overlay
+.RE
+.PP
+Use a custom configuration file:
+.PP
+.RS 4
+.B sway-simple-overlay \-\-config /path/to/my-config.yaml
+.RE
+.PP
+Use a custom stylesheet and disable live reload:
+.PP
+.RS 4
+.B sway-simple-overlay \-\-css /path/to/my-style.css \-\-no\-reload
+.RE
+.PP
+Start with debug output:
+.PP
+.RS 4
+.B sway-simple-overlay \-\-debug
+.RE
+.PP
+Example
+.I config.yaml
+showing two monitors:
+.PP
+.RS 4
+.nf
+monitors:
+  - name: "DP-1"
+    anchor: ["top", "right"]
+    margin: [20, 20]
+    scale: 1.2
+    refresh_interval: 1.0
+    parts:
+      - name: "time"
+        format: "%H:%M:%S"
+      - name: "date"
+        format: "%Y-%m-%d"
+      - name: "cpu"
+        command: "grep 'cpu ' /proc/stat | awk '{usage=($2+$4)*100/($2+$4+$5)} END {print int(usage) \"%\"}'"
+  - name: "default"
+    anchor: ["top", "left"]
+    margin: [10, 10]
+    scale: 1.0
+    refresh_interval: 5.0
+    parts:
+      - name: "time"
+        format: "%H:%M"
+
+css_path: "style.css"
+live_reload: true
+.fi
+.RE
+.SH NOTES
+.IP \(bu 2
+The overlay is always rendered on top of all windows.
+Click-through (pointer event passthrough) is not implemented.
+.IP \(bu 2
+Slow shell commands (high latency) will block the overlay UI refresh cycle.
+Keep
+.B command
+values fast.
+.IP \(bu 2
+.B sway-simple-overlay
+is designed primarily for Sway.
+It may partially work on other wlroots-based compositors that implement the
+layer-shell protocol, but is not officially supported on them.
+.SH DEPENDENCIES
+.TP
+.B Python 3.8+
+Runtime interpreter.
+.TP
+.B GTK 3
+Graphical toolkit (\fIpython3-gi\fR, \fIgir1.2-gtk-3.0\fR).
+.TP
+.B gtk-layer-shell
+Wayland layer-shell protocol bindings (\fIgir1.2-gtk-layer-shell-0.1\fR).
+.TP
+.B PyYAML
+YAML configuration parser.
+.TP
+.B swaymsg
+Used at runtime to query connected outputs from the Sway IPC socket.
+.SH LICENSE
+MIT License.
+.SH AUTHORS
+Written by the sway-simple-overlay contributors.
+.SH SEE ALSO
+.BR sway (1),
+.BR swaymsg (1),
+.BR strftime (3)
